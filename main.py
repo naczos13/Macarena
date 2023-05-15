@@ -2,11 +2,11 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+
 def main():
     # Set up the mediapipe instances
     mp_drawing = mp.solutions.drawing_utils
     mp_pose = mp.solutions.pose
-    mp_drawing_styles = mp.solutions.drawing_styles
     
     capture = cv2.VideoCapture(0)
 
@@ -64,15 +64,17 @@ def main():
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA
                                 )
                 
+                
             except KeyError:
                 pass
             
+            generate_text_with_instructions(image, "The Simon Says!")
+            genereate_text_with_score(image, "SCORE: 25")
+            generate_text_with_helper(image, "Helper: is not ok")
+            
             
             # Render detections
-            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                    landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
-                                    )
-                        
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)           
             
             cv2.imshow('Simple Tracker', image)
             
@@ -90,11 +92,56 @@ def calculate_angle(a, b, c):
     if angle > 180:
         angle = 360 - angle
         
-    return round(angle)    
+    return round(angle)
+
+
+def generate_text_with_instructions(image, text):
+    # Set the font properties
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_color = (255, 255, 255)  # White color
+
+    # Get the size of the text
+    text_size, _ = cv2.getTextSize(text, font, font_scale, 1)
+
+    # Bottom middle
+    text_x = (image.shape[1] - text_size[0]) // 2
+    text_y = image.shape[0] - 20
+
+    # Put the text on the image
+    cv2.putText(image, text, (text_x, text_y), font, font_scale, font_color, 2)
     
     
+def genereate_text_with_score(image, text):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_color = (255, 255, 255)  # White color
+
+    # Get the size of the text
+    text_size, _ = cv2.getTextSize(text, font, font_scale, 1)
+
+    # Right Top corner
+    text_x = image.shape[1] - text_size[0] - 20
+    text_y = 50
+
+    # Put the text on the image
+    cv2.putText(image, text, (text_x, text_y), font, font_scale, font_color, 2)
     
     
-main()
+def generate_text_with_helper(image, text):
+    #TODO change the color dependig if the user is in proper position
+    font_color = (0, 0, 255)  # RED color
+
+    # Left Top Corner
+    text_x = 20
+    text_y = 50
+
+    # Put the text on the image
+    cv2.putText(image, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, font_color, 2)
+    
+
+
+if __name__ == "__main__":
+    main()
 
 
