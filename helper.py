@@ -3,6 +3,50 @@ import mediapipe as mp
 import numpy as np
 import random
 
+mouse_clicked = False
+action_part = ""
+simon_message = ""
+
+def mouse_click_event(event, x, y, flags, param):
+    global mouse_clicked
+    if event == cv2.EVENT_LBUTTONDOWN:
+        if x < 100 and y < 100:
+            mouse_clicked = True
+
+def update_layout(frame, landmarks):
+    global mouse_clicked
+    global action_part
+    global simon_message
+    if mouse_clicked:
+        action_part, simon_message = regenerate_simon_instruction()
+        mouse_clicked = False
+        
+    draw_action_hand(frame, landmarks, action_part)
+        
+    generate_text_with_instructions(frame, simon_message)
+    genereate_text_with_score(frame, "SCORE: 25")
+    generate_text_with_helper(frame, "Helper: is not ok")
+
+def find_human_pose_in_image(frame):
+    ## Tune mediapipe detection and tracking
+    pose_detector = mp.solutions.pose.Pose(
+        min_detection_confidence=0.5, min_tracking_confidence=0.5
+    )
+    # Recolor image because mediapipe need RGB,
+    # and cv2 has default BGR
+    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # Memory optimization
+    image.flags.writeable = False
+
+    # Make detection
+    results = pose_detector.process(frame)
+
+    # Memory optimization
+    image.flags.writeable = True
+    # Recolor image back
+    image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    
+    return results
 
 def display_arm_angles(image, landmarks):
     mp_pose = mp.solutions.pose
@@ -61,9 +105,9 @@ def regenerate_simon_instruction():
     base_part = random.choice(base_parts)
     action_to_do = random.choice(actions_to_do)
 
-    simon_says = "Simon says " + action_part + " " + action_to_do + " " + base_part
+    simon_says = "Simon Says!\n " + action_part + " " + action_to_do + " " + base_part
     print(simon_says)
-    return action_part
+    return action_part, simon_says
 
 
 def draw_action_hand(image, landmarks, action_part):
