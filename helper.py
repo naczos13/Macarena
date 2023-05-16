@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import random
+import math
 
 mouse_clicked = False
 action_part = ""
@@ -21,7 +22,7 @@ def update_layout(frame, landmarks):
         action_part, simon_message = regenerate_simon_instruction()
         mouse_clicked = False
         
-    draw_action_hand(frame, landmarks, action_part)
+    #draw_action_hand(frame, landmarks, action_part)
         
     generate_text_with_instructions(frame, simon_message)
     genereate_text_with_score(frame, "SCORE: 25")
@@ -92,6 +93,8 @@ def disable_head_landmarks(landmarks):
     # Clear face landmarks
     CUTOFF_THRESHOLD = 10  # head and face according to https://camo.githubusercontent.com/7fbec98ddbc1dc4186852d1c29487efd7b1eb820c8b6ef34e113fcde40746be2/68747470733a2f2f6d65646961706970652e6465762f696d616765732f6d6f62696c652f706f73655f747261636b696e675f66756c6c5f626f64795f6c616e646d61726b732e706e67
     for landmark_id, landmark in enumerate(landmarks):
+        if landmark_id == 0:
+            continue
         if landmark_id <= CUTOFF_THRESHOLD:
             landmark.visibility = 0
 
@@ -109,18 +112,77 @@ def regenerate_simon_instruction():
     print(simon_says)
     return action_part, simon_says
 
+def print_what_right_hand_touch(landmarks, image):
+    mp_pose = mp.solutions.pose
+    right_hand = landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value]
+    
+    cv2.putText(
+        image,
+        str(f"({round(right_hand.x, 2)}, {round(right_hand.y, 2)})"),
+        tuple(np.multiply(
+            [right_hand.x, right_hand.y], 
+            [image.shape[1], image.shape[0]]
+            ).astype(int)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    closes_body_part = {'name' : 'empty', 'distance' : 10, 'position_x' : 0, 'position_y' : 0}
+    for single_pose in mp_pose.PoseLandmark:
+        # skip the hand landmarks
+        if single_pose in (list(range(1,11)) + [16, 18, 20, 22]):
+            continue
+        
+        body_part = landmarks[single_pose.value]
+            
+        cv2.putText(
+            image,
+            str(f"({round(body_part.x, 2)}, {round(body_part.y, 2)})"),
+            tuple(np.multiply(
+                [body_part.x, body_part.y], 
+                [image.shape[1], image.shape[0]]
+                ).astype(int)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        
+        # compute distance
+        distance = math.dist(
+            [body_part.x, body_part.y],
+            [right_hand.x, right_hand.y])
+        
+        if closes_body_part["distance"] > distance:
+            closes_body_part["distance"] = distance
+            closes_body_part["name"] = single_pose.name
+            closes_body_part["position_x"] = body_part.x
+            closes_body_part["position_y"] = body_part.y
+        
+        #colision_precision = 0.1
+        #if math.isclose(body_part.x, right_hand.x, rel_tol=colision_precision) and math.isclose(body_part.y, right_hand.y, rel_tol=colision_precision):
+        #    print(f"{mp_pose.PoseLandmark.RIGHT_INDEX.name}:({round(right_hand.x, 2)}, {round(right_hand.y, 2)}) is near {single_pose.name}:({round(body_part.x, 2)}, {round(body_part.y, 2)}) and distance is {distance}") 
+    
+    if closes_body_part["distance"] < 0.02:
+        print(f"{mp_pose.PoseLandmark.RIGHT_INDEX.name}:({round(right_hand.x, 2)}, {round(right_hand.y, 2)}) is near {closes_body_part['name']}:({round(closes_body_part['position_x'], 2)}, {round(closes_body_part['position_y'], 2)}) and distance is {closes_body_part['distance']}") 
+    
+    #TODO
+    
 
 def draw_action_hand(image, landmarks, action_part):
     mp_pose = mp.solutions.pose
 
     if action_part == "left_wrist":
-        left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
-        action_x = round(left_wrist.x * image.shape[1])
-        action_y = round(left_wrist.y * image.shape[0])
+        left_index = landmarks[mp_pose.PoseLandmark.LEFT_INDEX.value]
+        action_x = round(left_index.x * image.shape[1])
+        action_y = round(left_index.y * image.shape[0])
     else:
-        right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
-        action_x = round(right_wrist.x * image.shape[1])
-        action_y = round(right_wrist.y * image.shape[0])
+        right_index = landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value]
+        action_x = round(right_index.x * image.shape[1])
+        action_y = round(right_index.y * image.shape[0])
 
     cv2.circle(image, (action_x, action_y), 20, (255, 0, 255), -1)
 

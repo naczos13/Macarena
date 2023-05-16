@@ -19,6 +19,9 @@ def main():
         # Extract landmarks
         try:
             landmarks = results.pose_landmarks.landmark
+            
+            helper.print_what_right_hand_touch(landmarks, frame)
+            
             helper.disable_head_landmarks(landmarks)
             helper.display_arm_angles(frame, landmarks)
             helper.update_layout(frame, landmarks)
