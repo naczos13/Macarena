@@ -6,6 +6,7 @@ import math
 
 mouse_clicked = False
 action_part = ""
+base_part = ""
 simon_message = ""
 
 def mouse_click_event(event, x, y, flags, param):
@@ -17,12 +18,19 @@ def mouse_click_event(event, x, y, flags, param):
 def update_layout(frame, landmarks):
     global mouse_clicked
     global action_part
+    global base_part
     global simon_message
     if mouse_clicked:
-        action_part, simon_message = regenerate_simon_instruction()
+        action_part, base_part, simon_message = regenerate_simon_instruction()
         mouse_clicked = False
         
-    #draw_action_hand(frame, landmarks, action_part)
+    draw_action_hand(frame, landmarks, action_part)
+    draw_base_body_part(frame, landmarks, base_part)
+    
+    print_what_right_hand_touch(landmarks, frame)
+    
+    disable_head_landmarks(landmarks)
+    display_arm_angles(frame, landmarks)
         
     generate_text_with_instructions(frame, simon_message)
     genereate_text_with_score(frame, "SCORE: 25")
@@ -100,56 +108,32 @@ def disable_head_landmarks(landmarks):
 
 
 def regenerate_simon_instruction():
-    action_parts = ["left_wrist", "right_wrist"]
-    base_parts = ["left_shoulder", "right_shoulder", "left_hip", "right_hip"]
-    actions_to_do = ["over", "on", "below", "right to", "left to"]
+    action_parts = [
+        { 'pose_name' : 'LEFT_INDEX', 'display_name' : 'LEFT HAND' },
+        { 'pose_name' : 'RIGHT_INDEX', 'display_name' : 'RIGHT HAND' }
+        ]
+    base_parts = [
+        { 'pose_name' : 'LEFT_SHOULDER', 'display_name' : 'LEFT SHOULDER' },
+        { 'pose_name' : 'RIGHT_SHOULDER', 'display_name' : 'RIGHT SHOULDER' },
+        { 'pose_name' : 'NOSE', 'display_name' : 'NOSE' }
+        ]
+    actions_to_do = ["on"]
 
     action_part = random.choice(action_parts)
     base_part = random.choice(base_parts)
     action_to_do = random.choice(actions_to_do)
 
-    simon_says = "Simon Says!\n " + action_part + " " + action_to_do + " " + base_part
+    simon_says = "Simon Says!\n " + action_part['display_name'] + " " + action_to_do + " " + base_part['display_name']
     print(simon_says)
-    return action_part, simon_says
+    return action_part['pose_name'], base_part['pose_name'], simon_says
 
 def print_what_right_hand_touch(landmarks, image):
     mp_pose = mp.solutions.pose
     right_hand = landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value]
     
-    cv2.putText(
-        image,
-        str(f"({round(right_hand.x, 2)}, {round(right_hand.y, 2)})"),
-        tuple(np.multiply(
-            [right_hand.x, right_hand.y], 
-            [image.shape[1], image.shape[0]]
-            ).astype(int)),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
     closes_body_part = {'name' : 'empty', 'distance' : 10, 'position_x' : 0, 'position_y' : 0}
-    for single_pose in mp_pose.PoseLandmark:
-        # skip the hand landmarks
-        if single_pose in (list(range(1,11)) + [16, 18, 20, 22]):
-            continue
-        
+    for single_pose in [mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.NOSE]:     
         body_part = landmarks[single_pose.value]
-            
-        cv2.putText(
-            image,
-            str(f"({round(body_part.x, 2)}, {round(body_part.y, 2)})"),
-            tuple(np.multiply(
-                [body_part.x, body_part.y], 
-                [image.shape[1], image.shape[0]]
-                ).astype(int)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
         
         # compute distance
         distance = math.dist(
@@ -161,30 +145,44 @@ def print_what_right_hand_touch(landmarks, image):
             closes_body_part["name"] = single_pose.name
             closes_body_part["position_x"] = body_part.x
             closes_body_part["position_y"] = body_part.y
-        
-        #colision_precision = 0.1
-        #if math.isclose(body_part.x, right_hand.x, rel_tol=colision_precision) and math.isclose(body_part.y, right_hand.y, rel_tol=colision_precision):
-        #    print(f"{mp_pose.PoseLandmark.RIGHT_INDEX.name}:({round(right_hand.x, 2)}, {round(right_hand.y, 2)}) is near {single_pose.name}:({round(body_part.x, 2)}, {round(body_part.y, 2)}) and distance is {distance}") 
-    
-    if closes_body_part["distance"] < 0.02:
+         
+    if closes_body_part["distance"] < 0.1:
         print(f"{mp_pose.PoseLandmark.RIGHT_INDEX.name}:({round(right_hand.x, 2)}, {round(right_hand.y, 2)}) is near {closes_body_part['name']}:({round(closes_body_part['position_x'], 2)}, {round(closes_body_part['position_y'], 2)}) and distance is {closes_body_part['distance']}") 
     
     #TODO
+   
+def get_body_part_window_coordinate(image, landmarks, body_index):
+    body_part = landmarks[body_index]
+    x = round(body_part.x * image.shape[1])
+    y = round(body_part.y * image.shape[0])
+    return x, y   
+  
     
-
 def draw_action_hand(image, landmarks, action_part):
     mp_pose = mp.solutions.pose
 
-    if action_part == "left_wrist":
-        left_index = landmarks[mp_pose.PoseLandmark.LEFT_INDEX.value]
-        action_x = round(left_index.x * image.shape[1])
-        action_y = round(left_index.y * image.shape[0])
+    if action_part == mp_pose.PoseLandmark.LEFT_INDEX.name:
+        action_x, action_y = get_body_part_window_coordinate(image, landmarks, mp_pose.PoseLandmark.LEFT_INDEX.value)
+    elif action_part == mp_pose.PoseLandmark.RIGHT_INDEX.name:
+        action_x, action_y = get_body_part_window_coordinate(image, landmarks, mp_pose.PoseLandmark.RIGHT_INDEX.value)
     else:
-        right_index = landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value]
-        action_x = round(right_index.x * image.shape[1])
-        action_y = round(right_index.y * image.shape[0])
+        return None
 
-    cv2.circle(image, (action_x, action_y), 20, (255, 0, 255), -1)
+    cv2.circle(image, (action_x, action_y), 20, (0, 255, 0), -1)
+    
+def draw_base_body_part(image, landmarks, base_part):
+    mp_pose = mp.solutions.pose
+
+    if base_part == mp_pose.PoseLandmark.LEFT_SHOULDER.name:
+        base_x, base_y = get_body_part_window_coordinate(image, landmarks, mp_pose.PoseLandmark.LEFT_SHOULDER.value)
+    elif base_part == mp_pose.PoseLandmark.RIGHT_SHOULDER.name:
+        base_x, base_y = get_body_part_window_coordinate(image, landmarks, mp_pose.PoseLandmark.RIGHT_SHOULDER.value)
+    elif base_part == mp_pose.PoseLandmark.NOSE.name:
+        base_x, base_y = get_body_part_window_coordinate(image, landmarks, mp_pose.PoseLandmark.NOSE.value)
+    else:
+        return None
+
+    cv2.circle(image, (base_x, base_y), 20, (255, 0, 0), -1)
 
 
 def calculate_angle(a, b, c):
