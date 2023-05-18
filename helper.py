@@ -10,78 +10,97 @@ import sys
 
 class VideoStreamWidget(object):
     def __init__(self):
-        # Start the thread to read frames from the video stream
-        self.thread = Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
-        self.PROGRAM_NAME = "Simon Says"
-        self.FIRST_FRAME_PATH = "first_frame.jpg"
+        ### Constans
         ## Tune mediapipe detection and tracking
-        self.pose_detector = mp.solutions.pose.Pose(
+        self.POSE_DETECTOR = mp.solutions.pose.Pose(
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         )
-        self.mp_pose = mp.solutions.pose.PoseLandmark
-        self.action_hand = self.mp_pose.LEFT_INDEX
-        self.base_part = self.mp_pose.NOSE
-        self.action_radius = 20
+        self.PROGRAM_NAME = "Simon Says"
+        self.FIRST_FRAME_PATH = "first_frame.jpg"
+        self.ACTION_RADIUS = 20
+        self.MP_POSE = mp.solutions.pose.PoseLandmark
+        
+        # Start the thread to read frames from the video stream
+        self._thread = Thread(target=self.update, args=())
+        self._thread.daemon = True
+        self._thread.start()
+
+        self._action_hand = self.MP_POSE.LEFT_INDEX # TODO change to null, wait for user to start
+        self._base_part = self.MP_POSE.NOSE # TODO change to null, wait for user to start
+        self._highest_score = 0
+        self._current_score = 0
+        self._capture = None # Camera capture
+        self._landmarks = None # Body parts position landmarks
+        self._left_menu = cv2.imread('menu_bar.jpg')    
 
     def update(self):
-        self.capture = cv2.VideoCapture(0)
+        self._capture = cv2.VideoCapture(0)
         # Read the next frame from the stream in a different thread
         while True:
-            if self.capture.isOpened():
-                (self.status, self.raw_frame) = self.capture.read()
-                self.find_human_pose_in_image()
+            if self._capture.isOpened():
+                (_, self._raw_frame) = self._capture.read()
+                self._pose_detection_results = self.find_human_pose_in_image(raw_camera_frame=self._raw_frame)
             time.sleep(0.01)
 
     def show_frame(self):
-        # as imput is raw_frame
+        # input is raw_frame
         try:
-            self.frame = self.raw_frame.copy()
+            frame = self._raw_frame.copy()
         except AttributeError:
             pass
 
         # check the landmarks
         try:
-            # self.pose_detection_results = self.raw_pose_detection_results.copy()
-            self.landmarks = self.pose_detection_results.pose_landmarks.landmark
-            self.draw_action_hand()
-            self.draw_base_body_part()
-            if self.done_what_simon_said():
-                self.regenerate_simon_instruction()
+            self._landmarks = self._pose_detection_results.pose_landmarks.landmark
+            frame = self.draw_action_hand(camera_frame=frame, action_hand=self._action_hand, landmarks=self._landmarks)
+            frame = self.draw_base_body_part(camera_frame=frame, target_body_part=self._base_part, landmarks=self._landmarks)
+            if self.done_what_simon_said(active_hand=self._action_hand,
+                                         target_body_part=self._base_part,
+                                         landmarks=self._landmarks,
+                                         camera_frame=frame):
+                self._action_hand, self._base_part = self.regenerate_simon_instruction()
+            #self.draw_scores()
         except (KeyError, AttributeError):
             pass
 
         # Display frames in main program
-        cv2.imshow(self.PROGRAM_NAME, self.frame)
+        canvas = self.concate_camera_frame_with_menu(camera_frame=frame, right_bar=self._left_menu)
+        cv2.imshow(self.PROGRAM_NAME, canvas)
         key = cv2.waitKey(1)
         if key == ord("q"):
-            self.capture.release()
+            self._capture.release()
             cv2.destroyAllWindows()
             exit(0)
 
     def show_menu(self):
         cv2.namedWindow(self.PROGRAM_NAME)
-        self.frame = cv2.imread(self.FIRST_FRAME_PATH)
-        if self.frame is not None:
-            cv2.imshow(self.PROGRAM_NAME, self.frame)
+        # read to self._raw_frame because this picture need to be display until the camera frame is ready
+        self._raw_frame = cv2.imread(self.FIRST_FRAME_PATH)
+        if self._raw_frame is not None and self._left_menu is not None:
+            canvas = self.concate_camera_frame_with_menu(camera_frame=self._raw_frame, right_bar=self._left_menu)
+            cv2.imshow(self.PROGRAM_NAME, canvas)
         else:
             exit(1)
 
-    def find_human_pose_in_image(self):
+    def concate_camera_frame_with_menu(self, camera_frame, right_bar):
+        window_width = right_bar.shape[1] + camera_frame.shape[1]
+        canvas = np.zeros((max(right_bar.shape[0], camera_frame.shape[0]), window_width, 3), dtype=np.uint8)    
+        # Place the camera frame on the left side of the canvas
+        canvas[:camera_frame.shape[0], :camera_frame.shape[1]] = camera_frame
+        # Place the menu bar on the right side of the canvas
+        canvas[:right_bar.shape[0], camera_frame.shape[1]:] = right_bar
+        return canvas
+        
+    def find_human_pose_in_image(self, raw_camera_frame):
         # Recolor image because mediapipe need RGB,
         # and cv2 has default BGR
-        image = cv2.cvtColor(self.raw_frame, cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(raw_camera_frame, cv2.COLOR_BGR2RGB)
         # Memory optimization
         image.flags.writeable = False
 
         # Make detection
-        self.pose_detection_results = self.pose_detector.process(image)
-
-        # # Memory optimization
-        # self.frame.flags.writeable = True
-        # # Recolor image back
-        # self.frame = cv2.cvtColor(self.frame, cv2.COLOR_RGB2BGR)
+        pose_detection_results = self.POSE_DETECTOR.process(image)
+        return pose_detection_results
 
     def draw_the_body_landmarks(self):
         try:
@@ -93,49 +112,54 @@ class VideoStreamWidget(object):
         except Exception:
             sys.exit("Error in draw_the_body_landmarks probably run before detection")
 
-    def get_body_part_window_coordinate(self, body_index):
-        body_part = self.landmarks[body_index.value]
-        x = round(body_part.x * self.frame.shape[1])
-        y = round(body_part.y * self.frame.shape[0])
+    def get_body_part_window_coordinate(self, body_index, landmarks, camera_frame):
+        body_part = landmarks[body_index.value]
+        x = round(body_part.x * camera_frame.shape[1])
+        y = round(body_part.y * camera_frame.shape[0])
         return x, y
 
-    def draw_action_hand(self):
-        x, y = self.get_body_part_window_coordinate(self.action_hand)
-        cv2.circle(self.frame, (x, y), self.action_radius, (0, 255, 0), -1)
+    def draw_action_hand(self, action_hand, camera_frame, landmarks):
+        x, y = self.get_body_part_window_coordinate(body_index=action_hand, landmarks=landmarks, camera_frame=camera_frame)
+        cv2.circle(camera_frame, (x, y), self.ACTION_RADIUS, (0, 255, 0), -1)
+        return camera_frame
 
-    def draw_base_body_part(self):
-        x, y = self.get_body_part_window_coordinate(self.base_part)
-        cv2.circle(self.frame, (x, y), self.action_radius, (255, 0, 0), -1)
+    def draw_base_body_part(self, target_body_part, camera_frame, landmarks):
+        x, y = self.get_body_part_window_coordinate(body_index=target_body_part, landmarks=landmarks, camera_frame=camera_frame)
+        cv2.circle(camera_frame, (x, y), self.ACTION_RADIUS, (255, 0, 0), -1)
+        return camera_frame
         
-    def done_what_simon_said(self):
-        action_x, action_y = self.get_body_part_window_coordinate(self.action_hand)
-        base_x, base_y = self.get_body_part_window_coordinate(self.base_part)
+    def done_what_simon_said(self, active_hand, target_body_part, landmarks, camera_frame):
+        active_x, active_y = self.get_body_part_window_coordinate(body_index=active_hand, landmarks=landmarks, camera_frame=camera_frame)
+        target_x, target_y = self.get_body_part_window_coordinate(body_index=target_body_part, landmarks=landmarks, camera_frame=camera_frame)
         
         distance = math.dist(
-            [action_x, action_y],
-            [base_x, base_y])
+            [active_x, active_y],
+            [target_x, target_y])
         
-        return distance < self.action_radius
-        
+        return distance < self.ACTION_RADIUS
         
     def regenerate_simon_instruction(self):
-        self.action_hand = random.choice([
-            self.mp_pose.LEFT_INDEX,
-            self.mp_pose.RIGHT_INDEX
+        active_hand = random.choice([
+            self.MP_POSE.LEFT_INDEX,
+            self.MP_POSE.RIGHT_INDEX
         ])
         
-        if self.action_hand == self.mp_pose.LEFT_INDEX:
-            self.base_part = random.choice([
-                self.mp_pose.NOSE,
-                self.mp_pose.RIGHT_SHOULDER,
-                self.mp_pose.RIGHT_INDEX,
-                self.mp_pose.RIGHT_ELBOW
+        if active_hand == self.MP_POSE.LEFT_INDEX:
+            target_body_part = random.choice([
+                self.MP_POSE.NOSE,
+                self.MP_POSE.RIGHT_SHOULDER,
+                self.MP_POSE.RIGHT_INDEX,
+                self.MP_POSE.RIGHT_ELBOW
             ])
-        elif self.action_hand == self.mp_pose.RIGHT_INDEX:
-            self.base_part = random.choice([
-                self.mp_pose.NOSE,
-                self.mp_pose.LEFT_SHOULDER,
-                self.mp_pose.LEFT_INDEX,
-                self.mp_pose.LEFT_ELBOW
+        elif active_hand == self.MP_POSE.RIGHT_INDEX:
+            target_body_part = random.choice([
+                self.MP_POSE.NOSE,
+                self.MP_POSE.LEFT_SHOULDER,
+                self.MP_POSE.LEFT_INDEX,
+                self.MP_POSE.LEFT_ELBOW
             ])
+            
+        return active_hand, target_body_part
+            
+        
             
