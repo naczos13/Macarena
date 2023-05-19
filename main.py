@@ -1,4 +1,4 @@
-import helper
+import lib.helper as helper
 
 
 def main():
