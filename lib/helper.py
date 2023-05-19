@@ -20,6 +20,7 @@ class VideoStreamWidget(object):
         self.ACTION_RADIUS = 20
         self.MP_POSE = mp.solutions.pose.PoseLandmark
         self.PATH_TO_HIGH_SCORE = "static/high_score.txt"
+        self.TIME_LIMIT_PER_ROUND = 10
         
         if capure_input_from_camera:
             # Start the thread to read frames from the video stream
@@ -57,6 +58,10 @@ class VideoStreamWidget(object):
                 self._landmarks = self._pose_detection_results.pose_landmarks.landmark
                 frame = self.draw_action_hand(camera_frame=frame, action_hand=self._action_hand, landmarks=self._landmarks)
                 frame = self.draw_base_body_part(camera_frame=frame, target_body_part=self._base_part, landmarks=self._landmarks)
+                elapsed = self.TIME_LIMIT_PER_ROUND - round(time.time() - self._time_start)
+                if elapsed < 0:
+                    self._games_runs = False
+                right_menu = self.show_timer(right_bar=right_menu, elapsed=elapsed)
                 if self.done_what_simon_said(active_hand=self._action_hand,
                                             target_body_part=self._base_part,
                                             landmarks=self._landmarks,
@@ -78,9 +83,22 @@ class VideoStreamWidget(object):
         key = cv2.waitKey(1)
         if key == ord("q"):
             self.exit_program()
-        if key == ord("s"):
+        if key == ord("s") or key == ord("r"):
             self._games_runs = True
+            self._time_start = time.time()
+            self._current_score = 0
     
+    def show_timer(self, right_bar, elapsed):
+        font = cv2.FONT_HERSHEY_COMPLEX_SMALL
+        pos_x = 10  
+        pos_y = 300
+        color = (0, 0, 255) # red
+        str_to_display = f"Remained {elapsed}s"
+        right_bar = cv2.putText(right_bar, str_to_display, (pos_x, pos_y), font, 
+                   1, color, 1, cv2.LINE_AA)
+        return right_bar
+        
+            
     def read_highest_score_from_file(self, path):
         try:
             with open(path, 'r') as file:
