@@ -47,7 +47,8 @@ class VideoStreamWidget(object):
             # self.MP_POSE.LEFT_ANKLE,
             # self.MP_POSE.RIGHT_ANKLE,
         ]
-
+        self.SAVED_POSE_TOTAL = 0
+        
         cv2.namedWindow(self.PROGRAM_NAME)
         cv2.setMouseCallback(self.PROGRAM_NAME, mouse_func)
         if capture_input_from_camera:
@@ -94,6 +95,8 @@ class VideoStreamWidget(object):
                 try:
                     own_landmarks = None
                     own_landmarks = self.read_snapshot(id_to_read=self._pose_id_read)
+                    num_of_poses_left_to_guess = self.SAVED_POSE_TOTAL - self._pose_id_read
+                    cv2.putText(right_menu, f"{num_of_poses_left_to_guess} left to guess", (5,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2, cv2.LINE_AA)
                 except IndexError:
                     print("You copied the all pose. Congratulation")
                     self._copy_pose_runs = False
@@ -205,6 +208,7 @@ class VideoStreamWidget(object):
     def read_snapshot(self, id_to_read):
         with open(self.PATH_TO_SAVED_POSES, "r") as file:
             data = json.load(file)
+            self.SAVED_POSE_TOTAL = len(data)
             landmarks = data[id_to_read]["landmarks"]
             return landmarks
 
