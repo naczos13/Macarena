@@ -25,25 +25,27 @@ class VideoStreamWidget(object):
         self.PATH_TO_SAVED_POSES = "static/saved_poses.json"
         self.HANDS = [self.MP_POSE.LEFT_INDEX, self.MP_POSE.RIGHT_INDEX]
         self.REACHABLE_BY_LEFT_HAND = [
-                    self.MP_POSE.RIGHT_SHOULDER,
-                    self.MP_POSE.RIGHT_INDEX,
-                    self.MP_POSE.RIGHT_ELBOW,
-                ]
+            self.MP_POSE.RIGHT_SHOULDER,
+            self.MP_POSE.RIGHT_INDEX,
+            self.MP_POSE.RIGHT_ELBOW,
+        ]
         self.REACHABLE_BY_RIGHT_HAND = [
-                    self.MP_POSE.LEFT_SHOULDER,
-                    self.MP_POSE.LEFT_INDEX,
-                    self.MP_POSE.LEFT_ELBOW,
-                ]
+            self.MP_POSE.LEFT_SHOULDER,
+            self.MP_POSE.LEFT_INDEX,
+            self.MP_POSE.LEFT_ELBOW,
+        ]
         self.REACHABLE_BY_BOTH_HANDS = [
-                    self.MP_POSE.NOSE,
-                    #self.MP_POSE.LEFT_HIP,
-                    #self.MP_POSE.RIGHT_HIP,
-                    #self.MP_POSE.LEFT_KNEE,
-                    #self.MP_POSE.RIGHT_KNEE,
-                    #self.MP_POSE.LEFT_ANKLE,
-                    #self.MP_POSE.RIGHT_ANKLE,
-                ]
+            self.MP_POSE.NOSE,
+            # self.MP_POSE.LEFT_HIP,
+            # self.MP_POSE.RIGHT_HIP,
+            # self.MP_POSE.LEFT_KNEE,
+            # self.MP_POSE.RIGHT_KNEE,
+            # self.MP_POSE.LEFT_ANKLE,
+            # self.MP_POSE.RIGHT_ANKLE,
+        ]
 
+        cv2.namedWindow(self.PROGRAM_NAME)
+        cv2.setMouseCallback(self.PROGRAM_NAME, mouse_func)
         if capture_input_from_camera:
             # Start the thread to read frames from the video stream
             self._thread = Thread(target=self.update, args=())
@@ -60,7 +62,7 @@ class VideoStreamWidget(object):
         self._copy_pose_runs = False
         self._snapshot = False
         self._pose_id_read = 0
-        self._need_restart = False
+        self._need_restart_macarena = False
 
     def update(self):
         self._capture = cv2.VideoCapture(0)
@@ -90,24 +92,27 @@ class VideoStreamWidget(object):
                 except IndexError:
                     print("You copied the all pose. Congratulation")
                     self._copy_pose_runs = False
-                if (own_landmarks is not None 
-                    and self.draw_the_body_landmarks(saved_landmarks=own_landmarks, camera_frame=frame, fresh_landmarks=self._landmarks)):
+                if own_landmarks is not None and self.draw_the_body_landmarks(
+                    saved_landmarks=own_landmarks,
+                    camera_frame=frame,
+                    fresh_landmarks=self._landmarks,
+                ):
                     self._pose_id_read += 1
                     print(f"Congratulation you copied {self._pose_id_read} poses")
-            
+
             if self._snapshot:
-                    self.record_snapshot(landmarks=self._landmarks)
-                    
-            if self._macarena_runs or self._need_restart:  
+                self.record_snapshot(landmarks=self._landmarks)
+
+            if self._macarena_runs or self._need_restart_macarena:
                 right_menu = self.draw_scores(
                     right_bar=right_menu,
                     max_score=self._highest_score,
                     current_score=self._current_score,
                 )
-                
+
             if self._macarena_runs:
                 right_menu = self.draw_instruction(right_bar=right_menu)
-                
+
                 frame = self.draw_action_hand(
                     camera_frame=frame,
                     action_hand=self._action_hand,
@@ -140,7 +145,6 @@ class VideoStreamWidget(object):
         except (KeyError, AttributeError):
             pass
 
-
         # Display frames in main program
         canvas = self.concat_camera_frame_with_menu(
             camera_frame=frame, right_bar=right_menu
@@ -154,40 +158,47 @@ class VideoStreamWidget(object):
                 self._macarena_runs = True
                 self._time_start = time.time()
                 self._current_score = 0
-                self._need_restart = True
-        if key == ord("r"):
+                self._need_restart_macarena = True
+        if key == ord("s"):
             self._snapshot = True
+
+        # TODO make it cleaner than this, global is 'clever' way
+        global make_snapshot_by_mouse_click
+        if make_snapshot_by_mouse_click:
+            self._snapshot = True
+            make_snapshot_by_mouse_click = False
+
         if key == ord("c"):
             if not self._copy_pose_runs:
                 self._copy_pose_runs = True
                 self._pose_id_read = 0
-                self._need_restart = True
+                self._need_restart_macarena = False
         if key == ord("r"):
-            self._need_restart = False
+            self._need_restart_macarena = False
 
     def record_snapshot(self, landmarks):
         self._snapshot = False
-        with open(self.PATH_TO_SAVED_POSES, 'r') as file:
+        with open(self.PATH_TO_SAVED_POSES, "r") as file:
             data = json.load(file)
-            
-        pose_time_snap = {'time' : round(time.time())}
+
+        pose_time_snap = {"time": round(time.time())}
         pose_list = []
         for idx, coords in enumerate(landmarks):
             coords_dict = MessageToDict(coords)
             pose_list.append(coords_dict)
-        pose_time_snap['landmarks'] = pose_list
-        
+        pose_time_snap["landmarks"] = pose_list
+
         data.append(pose_time_snap)
-        
-        with open(self.PATH_TO_SAVED_POSES, 'w') as file:
+
+        with open(self.PATH_TO_SAVED_POSES, "w") as file:
             json.dump(data, file, indent=4)
-            
+
     def read_snapshot(self, id_to_read):
-        with open(self.PATH_TO_SAVED_POSES, 'r') as file:
+        with open(self.PATH_TO_SAVED_POSES, "r") as file:
             data = json.load(file)
-            landmarks = data[id_to_read]['landmarks']
+            landmarks = data[id_to_read]["landmarks"]
             return landmarks
-            
+
     def show_timer(self, right_bar, elapsed):
         font = cv2.FONT_HERSHEY_COMPLEX_SMALL
         pos_x = 10
@@ -313,7 +324,6 @@ class VideoStreamWidget(object):
             return
 
     def show_menu(self):
-        cv2.namedWindow(self.PROGRAM_NAME)
         # read to self._raw_frame because this picture need to be display until the camera frame is ready
         self._raw_frame = cv2.imread(self.FIRST_FRAME_PATH)
         if self._raw_frame is not None and self._raw_right_menu is not None:
@@ -349,32 +359,42 @@ class VideoStreamWidget(object):
 
     def draw_the_body_landmarks(self, saved_landmarks, fresh_landmarks, camera_frame):
         correct_body_part = 0
-        for pose_landmark in (self.REACHABLE_BY_BOTH_HANDS + self.REACHABLE_BY_LEFT_HAND + self.REACHABLE_BY_RIGHT_HAND):
+        for pose_landmark in (
+            self.REACHABLE_BY_BOTH_HANDS
+            + self.REACHABLE_BY_LEFT_HAND
+            + self.REACHABLE_BY_RIGHT_HAND
+        ):
             id = pose_landmark.value
             name = pose_landmark.name
             single_saved_landmark = saved_landmarks[id]
-            color = (255, 255, 255) # white
-            radius = round(self.ACTION_RADIUS/4)
-            x_saved = round(single_saved_landmark['x'] * camera_frame.shape[1])
-            y_saved = round(single_saved_landmark['y'] * camera_frame.shape[0])
-            
+            color = (255, 255, 255)  # white
+            radius = round(self.ACTION_RADIUS / 4)
+            x_saved = round(single_saved_landmark["x"] * camera_frame.shape[1])
+            y_saved = round(single_saved_landmark["y"] * camera_frame.shape[0])
+
             single_fresh_landmark = fresh_landmarks[id]
             x_fresh = round(single_fresh_landmark.x * camera_frame.shape[1])
             y_fresh = round(single_fresh_landmark.y * camera_frame.shape[0])
-            
+
             distance = math.dist([x_saved, y_saved], [x_fresh, y_fresh])
             if distance < (2 * self.ACTION_RADIUS):
-                color = (0, 255, 0) # green
+                color = (0, 255, 0)  # green
                 correct_body_part += 1
-            
+
             cv2.circle(camera_frame, (x_saved, y_saved), radius, color, -1)
             font = cv2.FONT_HERSHEY_COMPLEX_SMALL
             cv2.putText(
-                camera_frame, name, (x_saved + 5, y_saved + 5), font, 0.5, color, 1, cv2.LINE_AA
-                )
-            
-        return correct_body_part > 4
-            
+                camera_frame,
+                name,
+                (x_saved + 5, y_saved + 5),
+                font,
+                0.5,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+
+        return correct_body_part > 5
 
     def get_body_part_window_coordinate(self, body_index, landmarks, camera_frame):
         body_part = landmarks[body_index.value]
@@ -423,3 +443,12 @@ class VideoStreamWidget(object):
             )
 
         return active_hand, target_body_part
+
+
+make_snapshot_by_mouse_click = False
+
+
+def mouse_func(event, x, y, flags, param):
+    global make_snapshot_by_mouse_click
+    if event == cv2.EVENT_RBUTTONDOWN:
+        make_snapshot_by_mouse_click = True
