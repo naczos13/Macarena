@@ -19,6 +19,10 @@ class VideoStreamWidget(object):
         self.PROGRAM_NAME = "Simon Says"
         self.FIRST_FRAME_PATH = "static/first_frame.jpg"
         self.ACTION_RADIUS = 20
+        self.CAMERA_FRAME_WIDTH = 640
+        self.CAMERA_FRAME_HEIGHT = 480
+        self.MENU_FRAME_WIDTH = 260
+        self.MENU_FRAME_HEIGHT = 480
         self.MP_POSE = mp.solutions.pose.PoseLandmark
         self.PATH_TO_HIGH_SCORE = "static/high_score.txt"
         self.TIME_LIMIT_PER_ROUND = 30
@@ -63,6 +67,7 @@ class VideoStreamWidget(object):
         self._snapshot = False
         self._pose_id_read = 0
         self._need_restart_macarena = False
+        self.show_welcome()
 
     def update(self):
         self._capture = cv2.VideoCapture(0)
@@ -102,46 +107,10 @@ class VideoStreamWidget(object):
 
             if self._snapshot:
                 self.record_snapshot(landmarks=self._landmarks)
-
+                
             if self._macarena_runs or self._need_restart_macarena:
-                right_menu = self.draw_scores(
-                    right_bar=right_menu,
-                    max_score=self._highest_score,
-                    current_score=self._current_score,
-                )
+                self.prepare_macarena(camera_frame=frame, menu_frame=right_menu)
 
-            if self._macarena_runs:
-                right_menu = self.draw_instruction(right_bar=right_menu)
-
-                frame = self.draw_action_hand(
-                    camera_frame=frame,
-                    action_hand=self._action_hand,
-                    landmarks=self._landmarks,
-                )
-                frame = self.draw_base_body_part(
-                    camera_frame=frame,
-                    target_body_part=self._base_part,
-                    landmarks=self._landmarks,
-                )
-                elapsed = self.TIME_LIMIT_PER_ROUND - round(
-                    time.time() - self._time_start
-                )
-                if elapsed < 0:
-                    self._macarena_runs = False
-                right_menu = self.show_timer(right_bar=right_menu, elapsed=elapsed)
-                if self.done_what_simon_said(
-                    active_hand=self._action_hand,
-                    target_body_part=self._base_part,
-                    landmarks=self._landmarks,
-                    camera_frame=frame,
-                ):
-                    (
-                        self._action_hand,
-                        self._base_part,
-                    ) = self.regenerate_simon_instruction()
-                    self._current_score += 1
-                    if self._current_score > self._highest_score:
-                        self._highest_score = self._current_score
         except (KeyError, AttributeError):
             pass
 
@@ -176,6 +145,46 @@ class VideoStreamWidget(object):
         if key == ord("r"):
             self._need_restart_macarena = False
 
+    def prepare_macarena(self, camera_frame, menu_frame):
+        menu_frame = self.draw_scores(
+            right_bar=menu_frame,
+            max_score=self._highest_score,
+            current_score=self._current_score,
+        )
+
+        if self._macarena_runs:
+            menu_frame = self.draw_instruction(right_bar=menu_frame)
+
+            camera_frame = self.draw_action_hand(
+                camera_frame=camera_frame,
+                action_hand=self._action_hand,
+                landmarks=self._landmarks,
+            )
+            camera_frame = self.draw_base_body_part(
+                camera_frame=camera_frame,
+                target_body_part=self._base_part,
+                landmarks=self._landmarks,
+            )
+            elapsed = self.TIME_LIMIT_PER_ROUND - round(
+                time.time() - self._time_start
+            )
+            if elapsed < 0:
+                self._macarena_runs = False
+            menu_frame = self.show_timer(right_bar=menu_frame, elapsed=elapsed)
+            if self.done_what_simon_said(
+                active_hand=self._action_hand,
+                target_body_part=self._base_part,
+                landmarks=self._landmarks,
+                camera_frame=camera_frame,
+            ):
+                (
+                    self._action_hand,
+                    self._base_part,
+                ) = self.regenerate_simon_instruction()
+                self._current_score += 1
+                if self._current_score > self._highest_score:
+                    self._highest_score = self._current_score
+        
     def record_snapshot(self, landmarks):
         self._snapshot = False
         with open(self.PATH_TO_SAVED_POSES, "r") as file:
@@ -323,9 +332,30 @@ class VideoStreamWidget(object):
         except ValueError:
             return
 
-    def show_menu(self):
+    def show_welcome(self):
+        # Create right menu
+        self._raw_right_menu = self.generate_simple_menu()
+        
+        # Create a green background image
+        background_color = (0, 255, 0)  # Green
+        background_image = 255 * np.ones((self.CAMERA_FRAME_HEIGHT, self.CAMERA_FRAME_WIDTH, 3), dtype=np.uint8)
+        background_image[:] = background_color # mask it
+
+        # Add title to the image
+        text = "Hello in Macarena Game"
+        text_position = (int(self.CAMERA_FRAME_WIDTH/2 - len(text)*6), int(self.CAMERA_FRAME_HEIGHT/2))
+        text_color = (0, 0, 0)  # Black
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        thickness = 2
+        cv2.putText(background_image, text, text_position, font, font_scale, text_color, thickness, cv2.LINE_AA)
+        # Add warning to the image
+        text = "Waiting for the camera input..."
+        text_position = (int(self.CAMERA_FRAME_WIDTH/2 - len(text)*6), int(self.CAMERA_FRAME_HEIGHT/2 + 50))
+        cv2.putText(background_image, text, text_position, font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
         # read to self._raw_frame because this picture need to be display until the camera frame is ready
-        self._raw_frame = cv2.imread(self.FIRST_FRAME_PATH)
+        self._raw_frame = background_image
         if self._raw_frame is not None and self._raw_right_menu is not None:
             canvas = self.concat_camera_frame_with_menu(
                 camera_frame=self._raw_frame, right_bar=self._raw_right_menu
@@ -334,6 +364,55 @@ class VideoStreamWidget(object):
         else:
             exit(1)
 
+    def generate_simple_menu(self):
+        # Create a gray background image
+        background_color = (128, 128, 128)  # Gray
+        background_image = 255 * np.ones((self.MENU_FRAME_HEIGHT, self.MENU_FRAME_WIDTH, 3), dtype=np.uint8)
+        background_image[:] = background_color # mask it
+
+        # Add title to the image
+        text = "Menu"
+        text_position_y = self.MENU_FRAME_HEIGHT // 2 + 100
+        text_position_x = 5
+  
+        text_color = (0, 0, 0)  # Black
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        thickness = 2
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        # generate options
+        font_scale = 0.45
+        thickness = 1
+        text_position_y += 20
+        text = "Press 'm' to start the Macarena"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        text_position_y += 15
+        text = "Press 'c' to start the CopyGame"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        text_position_y += 15
+        text = "Press 's' to add pose snapshot"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        text_position_y += 15
+        text = "Press 'r' to restart"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        text_position_y += 15
+        text = "Press 'q' to quite the game"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        
+        # add author note
+        font_scale = 0.35
+        text_position_y += 25
+        text = "Created by Marcin Naczk"
+        cv2.putText(background_image, text, (text_position_x, text_position_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        return background_image
+        
     def concat_camera_frame_with_menu(self, camera_frame, right_bar):
         window_width = right_bar.shape[1] + camera_frame.shape[1]
         canvas = np.zeros(
