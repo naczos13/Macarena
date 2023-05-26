@@ -7,6 +7,7 @@ from threading import Thread
 import time
 import json
 from google.protobuf.json_format import MessageToDict
+import os
 
 
 class VideoStreamWidget(object):
@@ -17,16 +18,15 @@ class VideoStreamWidget(object):
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         )
         self.PROGRAM_NAME = "Simon Says"
-        self.FIRST_FRAME_PATH = "static/first_frame.jpg"
         self.ACTION_RADIUS = 20
         self.CAMERA_FRAME_WIDTH = 640
         self.CAMERA_FRAME_HEIGHT = 480
         self.MENU_FRAME_WIDTH = 260
         self.MENU_FRAME_HEIGHT = 480
         self.MP_POSE = mp.solutions.pose.PoseLandmark
-        self.PATH_TO_HIGH_SCORE = "static/high_score.txt"
+        self.PATH_TO_HIGH_SCORE  = os.path.join("Macarena" ,"static", "high_score.txt")
         self.TIME_LIMIT_PER_ROUND = 30
-        self.PATH_TO_SAVED_POSES = "static/saved_poses.json"
+        self.PATH_TO_SAVED_POSES = os.path.join("Macarena", "static", "saved_poses.json")
         self.HANDS = [self.MP_POSE.LEFT_INDEX, self.MP_POSE.RIGHT_INDEX]
         self.REACHABLE_BY_LEFT_HAND = [
             self.MP_POSE.RIGHT_SHOULDER,
@@ -62,12 +62,13 @@ class VideoStreamWidget(object):
         self._current_score = 0
         self._capture = None  # Camera capture
         self._landmarks = None  # Body parts position landmarks
-        self._raw_right_menu = cv2.imread("static/menu_bar.jpg")
+        self._raw_right_menu = None
         self._macarena_runs = False
         self._copy_pose_runs = False
         self._snapshot = False
         self._pose_id_read = 0
         self._need_restart_macarena = False
+        self._need_restart_copy_game = False
         self.show_welcome()
 
     def update(self):
@@ -97,8 +98,7 @@ class VideoStreamWidget(object):
                     own_landmarks = self.read_snapshot(id_to_read=self._pose_id_read)
                     num_of_poses_left_to_guess = self.SAVED_POSE_TOTAL - self._pose_id_read
                     cv2.putText(right_menu, f"{num_of_poses_left_to_guess} left to guess", (5,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2, cv2.LINE_AA)
-                except IndexError:
-                    print("You copied the all pose. Congratulation")
+                except (IndexError, FileNotFoundError):
                     self._copy_pose_runs = False
                 if own_landmarks is not None and self.draw_the_body_landmarks(
                     saved_landmarks=own_landmarks,
@@ -106,7 +106,9 @@ class VideoStreamWidget(object):
                     fresh_landmarks=self._landmarks,
                 ):
                     self._pose_id_read += 1
-                    print(f"Congratulation you copied {self._pose_id_read} poses")
+            if self._need_restart_copy_game and not self._copy_pose_runs:
+                cv2.putText(right_menu, "You copied all poses. Congratulation!", (5,50), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,255,0), 1, cv2.LINE_AA)
+
 
             if self._snapshot:
                 self.record_snapshot(landmarks=self._landmarks)
@@ -131,6 +133,7 @@ class VideoStreamWidget(object):
                 self._time_start = time.time()
                 self._current_score = 0
                 self._need_restart_macarena = True
+                self._need_restart_copy_game = False
         if key == ord("s"):
             self._snapshot = True
 
@@ -145,8 +148,10 @@ class VideoStreamWidget(object):
                 self._copy_pose_runs = True
                 self._pose_id_read = 0
                 self._need_restart_macarena = False
+                self._need_restart_copy_game = True
         if key == ord("r"):
             self._need_restart_macarena = False
+            self._need_restart_copy_game = False
 
     def prepare_macarena(self, camera_frame, menu_frame):
         menu_frame = self.draw_scores(
@@ -190,8 +195,11 @@ class VideoStreamWidget(object):
         
     def record_snapshot(self, landmarks):
         self._snapshot = False
-        with open(self.PATH_TO_SAVED_POSES, "r") as file:
-            data = json.load(file)
+        try:
+            with open(self.PATH_TO_SAVED_POSES, "r") as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            data = []
 
         pose_time_snap = {"time": round(time.time())}
         pose_list = []
@@ -201,9 +209,14 @@ class VideoStreamWidget(object):
         pose_time_snap["landmarks"] = pose_list
 
         data.append(pose_time_snap)
-
-        with open(self.PATH_TO_SAVED_POSES, "w") as file:
-            json.dump(data, file, indent=4)
+        try:
+            with open(self.PATH_TO_SAVED_POSES, "w") as file:
+                json.dump(data, file, indent=4)
+        except FileNotFoundError:
+            current_path = os.getcwd()
+            print("Current path:", current_path)
+            with open(self.PATH_TO_SAVED_POSES, "x") as file:
+                json.dump(data, file, indent=4)
 
     def read_snapshot(self, id_to_read):
         with open(self.PATH_TO_SAVED_POSES, "r") as file:
