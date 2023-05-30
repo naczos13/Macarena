@@ -1,5 +1,9 @@
 # Macarena
 
+#### Video Demo:
+https://youtu.be/4eFbCqDW3n4
+
+
 ## Description
 
 This project is written in Python and utilizes the Mediapipe module for pose detection. The main focus of the project is to implement two simple games.
@@ -67,7 +71,25 @@ Second game is caled "CopyGame" where users can record their positions and later
     * Have fun!
 
     To quit the game press 'q'
-  
+
+## Project Design Choices
+
+In the development of this project, several design choices were made to enhance its functionality and flexibility. These design choices are outlined below:
+
+### Class-based Camera Processing
+
+The camera processing functionality has been implemented as a class. This design decision was made to facilitate potential future integration of the camera processing as a widget in a web application. By encapsulating the camera processing logic within a class, it becomes easier to reuse and extend this functionality in different contexts. Also I need 'global' variables that share the state of the curent app. This is easly done by 'self' in class.
+
+### Multithreading for Independent Processes
+
+Multithreading has been employed to handle two computationally independent processes. The first process involves capturing the camera frames, while the second process involves processing the frames to detect human poses and draw the necessary elements for an enhanced user experience. By using multithreading, these processes can run concurrently, improving the overall performance and responsiveness of the application.
+
+### Storage of Pose Snapshots in JSON Format
+
+Pose snapshots are stored in a JSON file as a list of key-value pairs. This design choice aligns with the implementation of landmarks used by the Mediapipe library. Storing the pose snapshots in JSON format provides a structured and easily interpretable way to save and retrieve the recorded pose positions. This facilitates the functionality of the CopyGame, where users can save and later replicate the stored poses.
+
+By making these design choices, the project offers modularity, extensibility, and ease of integration into different environments or applications. It ensures a smooth user experience while providing the flexibility to incorporate additional features and improvements in the future.
+
 ## License
 
 [MIT License](LICENSE)
@@ -93,3 +115,11 @@ Contributions to the project are always welcome. Here's how you can contribute:
 ## Contact
 
 If you have any questions, suggestions, or feedback, please open the github issue.
+
+
+
+Design choices.
+
+I implement the camera processing as class becuase it could be helpful if I want to in the future implement it as as wiget in some web app.
+I use the multithreading becuse I spotted two compute independent processes. One is capturing the camera frame. The second is processing frame, to detect the human pose and draw the necessary elments to make the game more user friendly.
+I store the pose snapshots in json file as list of key value pair, becuse it simalar to the implementatio of the landmark used by mediapipe.
